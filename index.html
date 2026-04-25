@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Feed Monitor</title>
+    <meta name="description" content="Personal RSS / YouTube / blog feed dashboard" />
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem('fm-theme');
+          if (t) t = t.replace(/"/g, '');
+          if (t === 'light') document.documentElement.dataset.theme = 'light';
+          else document.documentElement.dataset.theme = 'dark';
+        } catch (_) {
+          document.documentElement.dataset.theme = 'dark';
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

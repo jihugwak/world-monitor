@@ -12,6 +12,8 @@ export interface StoredFeed {
   title: string;
   kind: FeedKind;
   addedAt: number;
+  /** YouTube channels that broadcast 24/7 — embed live_stream player. */
+  live?: boolean;
 }
 
 export interface FeedItem {

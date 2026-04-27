@@ -5,6 +5,44 @@ const PROXIES: Array<(url: string) => string> = [
   (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
 ];
 
+/** Resolve the currently-broadcast videoId for a YouTube channel.
+ *  Tries /live (which redirects to the active broadcast on live channels)
+ *  first, then falls back to the /streams listing. Returns null if no live
+ *  broadcast can be found. */
+export async function fetchYouTubeLiveVideoId(
+  channelId: string,
+  signal?: AbortSignal,
+): Promise<string | null> {
+  // 1) /live — when the channel is currently live, the canonical URL points
+  //    to the watch page of that live video. Otherwise it falls back to the
+  //    channel landing.
+  try {
+    const html = await fetchText(`https://www.youtube.com/channel/${channelId}/live`, signal);
+    const canonical = html.match(/<link rel="canonical" href="https:\/\/www\.youtube\.com\/watch\?v=([A-Za-z0-9_-]{11})"/);
+    if (canonical) return canonical[1];
+  } catch {
+    /* fall through */
+  }
+
+  // 2) /streams — pick the first videoId tagged `"style":"LIVE"` if any.
+  try {
+    const html = await fetchText(`https://www.youtube.com/channel/${channelId}/streams`, signal);
+    // Look for runs that include both a videoId and a LIVE style marker
+    // within the same gridVideoRenderer payload (~1KB window).
+    const liveMatches = html.matchAll(
+      /"videoId":"([A-Za-z0-9_-]{11})"[^]{0,1500}?"style":"LIVE"/g,
+    );
+    for (const m of liveMatches) return m[1];
+    // No currently-live entry — return the most recent stream as a soft
+    // fallback; YouTube will play it on demand.
+    const first = html.match(/"videoId":"([A-Za-z0-9_-]{11})"/);
+    if (first) return first[1];
+  } catch {
+    /* return null */
+  }
+  return null;
+}
+
 async function fetchText(url: string, signal?: AbortSignal): Promise<string> {
   // Direct first (some servers send permissive CORS)
   try {

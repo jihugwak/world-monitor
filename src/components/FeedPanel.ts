@@ -1,11 +1,13 @@
 import { fetchAndParse, resolveFeedUrl } from '@/feeds';
 import type { FeedItem, FeedStatus, StoredFeed } from '@/types';
+import { escapeAttr, escapeHtml, formatRelative } from '@/util';
 
 const ITEMS_PER_PANEL = 20;
 
 export interface FeedPanelHooks {
   onRemove: (id: string) => void;
   onUrlResolved?: (id: string, feedUrl: string, title: string) => void;
+  onItems?: (id: string, title: string, items: FeedItem[]) => void;
 }
 
 function isResolvedYouTubeFeedUrl(url: string): boolean {
@@ -66,19 +68,19 @@ export class FeedPanel {
     const refreshBtn = document.createElement('button');
     refreshBtn.className = 'panel-action-btn';
     refreshBtn.title = '새로고침';
-    refreshBtn.textContent = '\u21BB';
+    refreshBtn.textContent = '↻';
     refreshBtn.addEventListener('click', () => void this.refresh());
 
     const openBtn = document.createElement('button');
     openBtn.className = 'panel-action-btn';
     openBtn.title = '피드 URL 열기';
-    openBtn.textContent = '\u2197';
+    openBtn.textContent = '↗';
     openBtn.addEventListener('click', () => window.open(feed.feedUrl, '_blank', 'noopener'));
 
     const removeBtn = document.createElement('button');
     removeBtn.className = 'panel-action-btn panel-action-danger';
     removeBtn.title = '삭제';
-    removeBtn.textContent = '\u00D7';
+    removeBtn.textContent = '×';
     removeBtn.addEventListener('click', () => {
       if (confirm(`"${this.feed.title}" 삭제할까요?`)) this.hooks.onRemove(this.feed.id);
     });
@@ -143,9 +145,10 @@ export class FeedPanel {
           this.feed.title = r.title;
           this.titleEl.textContent = r.title;
         }
-        this.hooks.onUrlResolved?.(this.feed.id, r.feedUrl, r.title);
+        this.hooks.onUrlResolved?.(this.feed.id, r.feedUrl, this.feed.title);
         this.countEl.textContent = `(${r.items.length})`;
         this.renderItems(r.items);
+        this.hooks.onItems?.(this.feed.id, this.feed.title, r.items);
         this.setStatus('live');
         return;
       }
@@ -157,6 +160,7 @@ export class FeedPanel {
       }
       this.countEl.textContent = `(${result.items.length})`;
       this.renderItems(result.items);
+      this.hooks.onItems?.(this.feed.id, this.feed.title, result.items);
       this.setStatus('live');
     } catch (e) {
       if (ctrl.signal.aborted) return;
@@ -175,6 +179,7 @@ export class FeedPanel {
     }
     this.countEl.textContent = `(${items.length})`;
     this.renderItems(items);
+    this.hooks.onItems?.(this.feed.id, this.feed.title, items);
     this.setStatus('live');
   }
 
@@ -203,24 +208,4 @@ function renderItem(item: FeedItem, kind: string): string {
         </div>
       </div>
     </li>`;
-}
-
-function formatRelative(ts: number): string {
-  const diff = Date.now() - ts;
-  if (diff < 0) return 'just now';
-  if (diff < 60_000) return '방금';
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}분 전`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}시간 전`;
-  if (diff < 30 * 86_400_000) return `${Math.floor(diff / 86_400_000)}일 전`;
-  return new Date(ts).toLocaleDateString('ko-KR');
-}
-
-function escapeHtml(s: string): string {
-  const div = document.createElement('div');
-  div.textContent = s;
-  return div.innerHTML;
-}
-
-function escapeAttr(s: string): string {
-  return s.replace(/"/g, '&quot;').replace(/</g, '&lt;');
 }

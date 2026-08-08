@@ -1,0 +1,11 @@
+# Cloudflare Worker: on-demand feed collector for World Monitor.
+# Fetches every source in ../src/data/seed-feeds.json server-side (no CORS),
+# parses to the app's FeedItem shape, and serves one aggregated JSON at
+#   https://<name>.<your-subdomain>.workers.dev/feed-snapshot.json
+# Responses are cached 60s (Cache API), so the app can poll every ~1 min for
+# near-real-time news without a cron or any storage. Free plan is plenty.
+
+name = "world-monitor-feeds"
+main = "src/index.mjs"
+compatibility_date = "2024-11-01"
+workers_dev = true

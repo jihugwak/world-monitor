@@ -10,3 +10,7 @@ snapshot
 
 # Claude Code runtime lock
 .claude/scheduled_tasks.lock
+
+# Cloudflare Wrangler
+.wrangler
+worker/.wrangler

@@ -1223,3 +1223,48 @@ ul { list-style: none; padding: 0; margin: 0; }
   25% { transform: translateX(-4px); }
   75% { transform: translateX(4px); }
 }
+
+/* ── Phone / PWA layout ──────────────────────────────────
+   The desktop grid already reflows via minmax(), but the header and a few
+   min-widths overflow narrow screens. Collapse to a single column, enlarge
+   tap targets, and respect the notch safe areas. */
+@media (max-width: 640px) {
+  body { font-size: 14px; }
+
+  /* Header fits one row: drop the clock, tighten spacing, keep 44px tap size. */
+  .header {
+    height: auto;
+    min-height: 48px;
+    padding: env(safe-area-inset-top) 10px 0;
+    gap: 8px;
+  }
+  .header-left { gap: 8px; min-width: 0; }
+  .header-title {
+    font-size: 12px;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .header-clock { display: none; }
+  .header-right { gap: 4px; }
+  .header-btn { height: 34px; padding: 0 10px; }
+  #btn-add { padding: 0 10px; }
+
+  /* One column — 340px min would otherwise overflow small viewports. */
+  .panels-grid { grid-template-columns: 1fr; }
+  .live-wall { grid-template-columns: 1fr; }
+
+  .main-content { padding: 6px; }
+
+  /* Kill min-widths that force horizontal scroll on the empty state. */
+  .empty-examples { min-width: 0; max-width: 100%; }
+  .empty-state { padding: 40px 16px; }
+
+  /* Status bar clears the home indicator. */
+  .status-bar { padding-bottom: env(safe-area-inset-bottom); height: auto; min-height: 26px; }
+
+  /* Article reader / focus overlays go edge-to-edge for more room. */
+  .reader-overlay { padding: 0; }
+  .reader-content { border-radius: 0; border: 0; }
+}

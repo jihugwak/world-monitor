@@ -26,6 +26,16 @@ export class ArticleReader {
 
   open(url: string, title?: string): void {
     if (!url) return;
+
+    // The in-app iframe reader depends on the Electron main process stripping
+    // X-Frame-Options / CSP frame-ancestors. In a plain browser (the web/phone
+    // PWA build) that's impossible and most sites refuse to embed — so just
+    // open the article in a new tab instead of showing a blank frame.
+    if (import.meta.env.VITE_TARGET === 'web') {
+      window.open(url, '_blank', 'noopener');
+      return;
+    }
+
     this.currentUrl = url;
 
     let host = '';

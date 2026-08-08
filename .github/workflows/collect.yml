@@ -1,29 +1,32 @@
-name: Collect feeds
+name: Publish app + feed snapshot
 
-# Runs even when your PC is off: a free serverless cron on GitHub's runners
-# fetches every source and publishes one aggregated snapshot to GitHub Pages.
-# The desktop app reads that JSON instead of hitting 20 origins through proxies.
+# One GitHub Pages site serves BOTH:
+#   - the installable PWA (phone/web build of the renderer), and
+#   - feed-snapshot.json, refreshed by the server-side collector.
+# GitHub Pages allows a single deployment per site, so both are built and
+# published together here. Runs on push (app changes) and on a cron (fresh
+# news even when your PC is off).
 
 on:
+  push:
+    branches: [main]
   schedule:
-    # Every 10 minutes. GitHub's minimum is 5 min and runs may be delayed a
-    # few minutes under load — fine for "always latest".
+    # Every 10 minutes. GitHub's minimum is 5 min; runs may be delayed a few
+    # minutes under load — fine for "always latest".
     - cron: '*/10 * * * *'
-  workflow_dispatch: {} # allow manual "Run workflow" from the Actions tab
+  workflow_dispatch: {}
 
-# Least privilege: read the repo, write to Pages.
 permissions:
   contents: read
   pages: write
   id-token: write
 
-# Never run two publishes at once; a newer run supersedes an in-flight one.
 concurrency:
   group: pages
   cancel-in-progress: true
 
 jobs:
-  collect:
+  publish:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -38,14 +41,25 @@ jobs:
 
       - run: npm ci
 
-      - name: Collect feeds into snapshot/
-        run: node scripts/collect.mjs
+      # Build the installable web/PWA renderer (VITE_TARGET=web gates the
+      # Electron-only in-app reader + enables the service worker).
+      - name: Build web app
+        run: npm run build
+        env:
+          VITE_TARGET: web
+
+      # Collect all feeds server-side and drop the snapshot next to the app so
+      # it's reachable at <pages-url>/feed-snapshot.json.
+      - name: Collect feed snapshot
+        run: |
+          node scripts/collect.mjs
+          cp snapshot/feed-snapshot.json dist/feed-snapshot.json
 
       - uses: actions/configure-pages@v5
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: snapshot
+          path: dist
 
       - id: deploy
         uses: actions/deploy-pages@v4

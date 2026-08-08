@@ -79,7 +79,18 @@
       "Bash(node -e \"import\\('fast-xml-parser'\\).then\\(m=>console.log\\('ok', typeof m.XMLParser\\)\\)\")",
       "Bash(node scripts/collect.mjs)",
       "Bash(node -e \"const s=require\\('./snapshot/feed-snapshot.json'\\); const f=s.feeds.find\\(x=>x.title.includes\\('OpenAI'\\)\\); console.log\\('keys:',Object.keys\\(s\\)\\); console.log\\('feed keys:',Object.keys\\(f\\)\\); console.log\\('sample item:',JSON.stringify\\(f.items[0],null,2\\).slice\\(0,500\\)\\); console.log\\('bytes:',require\\('fs'\\).statSync\\('./snapshot/feed-snapshot.json'\\).size\\);\")",
-      "Bash(git check-ignore *)"
+      "Bash(git check-ignore *)",
+      "Bash(git reset *)",
+      "Bash(printf '\\\\n# Claude Code runtime lock\\\\n.claude/scheduled_tasks.lock\\\\n')",
+      "Bash(git commit -q -m ' *)",
+      "Bash(git push *)",
+      "Bash(gh api *)",
+      "Bash(gh workflow *)",
+      "Bash(gh run *)",
+      "Bash(echo \"=== exit: $? ===\")",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\).on\\('end',\\(\\)=>{const s=JSON.parse\\(d\\);console.log\\('okCount:',s.okCount,'/',s.total\\);console.log\\('generatedAt:',new Date\\(s.generatedAt\\).toISOString\\(\\)\\);const ai=s.feeds.filter\\(f=>/AI|OpenAI|DeepMind/.test\\(f.title\\)\\).map\\(f=>f.title+':'+f.items.length\\);console.log\\('AI feeds:',ai.join\\(' | '\\)\\);}\\)\")",
+      "Bash(git commit -q -m)",
+      "Bash(node -e \"const b=require\\('fs'\\).readFileSync\\('image.png'\\);console.log\\('size',b.length\\);console.log\\('dims', b.readUInt32BE\\(16\\)+'x'+b.readUInt32BE\\(20\\)\\)\")"
     ]
   }
 }

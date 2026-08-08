@@ -92,7 +92,22 @@
       "Bash(git commit -q -m)",
       "Bash(node -e \"const b=require\\('fs'\\).readFileSync\\('image.png'\\);console.log\\('size',b.length\\);console.log\\('dims', b.readUInt32BE\\(16\\)+'x'+b.readUInt32BE\\(20\\)\\)\")",
       "Bash(node -e \"const s=require\\('./snapshot/feed-snapshot.json'\\);const hasThumb=s.feeds.some\\(f=>f.items.some\\(i=>'thumbnail' in i\\)\\);console.log\\('any thumbnail field?', hasThumb, '| bytes', require\\('fs'\\).statSync\\('./snapshot/feed-snapshot.json'\\).size\\)\")",
-      "Bash(VITE_TARGET=web npm run build)"
+      "Bash(VITE_TARGET=web npm run build)",
+      "Bash(npx --yes wrangler@latest --version)",
+      "Bash(npx --yes wrangler@latest whoami)",
+      "Bash(npx --yes wrangler@3 --version)",
+      "Bash(npx --yes wrangler@3 whoami)",
+      "Bash(npx --yes wrangler@3 dev --port 8787 --local)",
+      "Bash(echo \"started pid $!\")",
+      "Bash(node -e \"const s=require\\('/tmp/snap.json'\\);console.log\\('ok',s.okCount+'/'+s.total,'bytes',require\\('fs'\\).statSync\\('/tmp/snap.json'\\).size\\);const f=s.feeds.find\\(x=>x.title.includes\\('OpenAI'\\)\\)||s.feeds.find\\(x=>x.ok\\);console.log\\('sample feed:',f.title,'items',f.items.length\\);console.log\\('item0:',JSON.stringify\\(f.items[0]\\).slice\\(0,240\\)\\);console.log\\('any thumbnail?', s.feeds.some\\(x=>x.items.some\\(i=>'thumbnail' in i\\)\\)\\);const fails=s.feeds.filter\\(x=>!x.ok\\).map\\(x=>x.title+':'+x.error\\);console.log\\('fails:',fails.join\\(' | '\\)||'none'\\)\")",
+      "Bash(node -e \"const s=require\\('./worker_test.json'\\);console.log\\('ok',s.okCount+'/'+s.total,'| bytes',require\\('fs'\\).statSync\\('./worker_test.json'\\).size,'| thumbnails?',s.feeds.some\\(x=>x.items.some\\(i=>'thumbnail' in i\\)\\)\\);const f=s.feeds.find\\(x=>x.title.includes\\('OpenAI'\\)\\)||s.feeds.find\\(x=>x.ok\\);console.log\\('sample:',f.title,'items',f.items.length\\);console.log\\('item0:',JSON.stringify\\(f.items[0]\\)\\);const fails=s.feeds.filter\\(x=>!x.ok\\).map\\(x=>x.title+':'+x.error\\);console.log\\('fails:',fails.join\\(' | '\\)||'none'\\)\")",
+      "Bash(npx --yes wrangler@3 dev --local --test-scheduled --port 8788)",
+      "Bash(echo \"pid $!\")",
+      "Bash(npx --yes wrangler@3 kv namespace create SNAPSHOT)",
+      "Bash(npx --yes wrangler@3 deploy)",
+      "Bash(node *)",
+      "Bash(nslookup world-monitor-feeds.jihu-worldmon.workers.dev)",
+      "Bash(nslookup jihu-worldmon.workers.dev)"
     ]
   }
 }

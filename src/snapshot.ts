@@ -28,43 +28,57 @@ interface SnapshotDoc {
 
 const TTL_MS = 30_000;
 
-let cache: { url: string; at: number; doc: SnapshotDoc } | null = null;
-let inflight: { url: string; promise: Promise<SnapshotDoc | null> } | null = null;
+// Hard-coded fallback(s) tried after the user's configured snapshotUrl. The
+// GitHub Actions Pages snapshot (5-min cron) backs up the primary Cloudflare
+// Worker (2-min cron) if the Worker is ever unreachable.
+const FALLBACK_URLS = ['https://jihugwak.github.io/world-monitor/feed-snapshot.json'];
 
-/** True when the user has opted into cloud snapshots. */
+let cache: { at: number; doc: SnapshotDoc } | null = null;
+let inflight: Promise<SnapshotDoc | null> | null = null;
+
+/** Ordered list of snapshot URLs to try: configured primary, then fallbacks. */
+function snapshotUrls(): string[] {
+  const primary = loadSettings().snapshotUrl;
+  return [...new Set([primary, ...FALLBACK_URLS].filter((u) => u.length > 0))];
+}
+
+/** True when at least one snapshot source is configured. */
 export function snapshotEnabled(): boolean {
-  return loadSettings().snapshotUrl.length > 0;
+  return snapshotUrls().length > 0;
 }
 
 async function loadSnapshot(signal?: AbortSignal): Promise<SnapshotDoc | null> {
-  const url = loadSettings().snapshotUrl;
-  if (!url) return null;
+  const urls = snapshotUrls();
+  if (urls.length === 0) return null;
 
-  const fresh = cache && cache.url === url && Date.now() - cache.at < TTL_MS;
-  if (fresh) return cache!.doc;
+  if (cache && Date.now() - cache.at < TTL_MS) return cache.doc;
 
-  // Coalesce the burst of concurrent panel refreshes into one request.
-  if (inflight && inflight.url === url) return inflight.promise;
+  // Coalesce the burst of concurrent panel refreshes into one request cycle.
+  if (inflight) return inflight;
 
-  const promise = (async () => {
+  inflight = (async () => {
     try {
-      const r = await fetch(url, { signal, cache: 'no-store' });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const doc = (await r.json()) as SnapshotDoc;
-      if (!doc || !Array.isArray(doc.feeds)) throw new Error('bad snapshot');
-      cache = { url, at: Date.now(), doc };
-      return doc;
-    } catch {
-      // On failure fall back to a still-valid-URL cache if we have one, else
-      // null so the caller fetches the origin directly.
-      return cache && cache.url === url ? cache.doc : null;
+      for (const url of urls) {
+        try {
+          const r = await fetch(url, { signal, cache: 'no-store' });
+          if (!r.ok) continue;
+          const doc = (await r.json()) as SnapshotDoc;
+          if (!doc || !Array.isArray(doc.feeds)) continue;
+          cache = { at: Date.now(), doc };
+          return doc;
+        } catch {
+          /* try the next source */
+        }
+      }
+      // Everything failed — serve a stale cache if we have one, else null so
+      // the caller fetches the origin directly.
+      return cache ? cache.doc : null;
     } finally {
       inflight = null;
     }
   })();
 
-  inflight = { url, promise };
-  return promise;
+  return inflight;
 }
 
 /** Return pre-parsed items for a feed from the snapshot, or null to signal the

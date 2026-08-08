@@ -31,10 +31,11 @@ export const DEFAULT_REFRESH_MIN = 1;
 const MIN_REFRESH_MIN = 1;
 const MAX_REFRESH_MIN = 240;
 
-/** Cloud snapshot published by the GitHub Actions collector (see
- *  .github/workflows/collect.yml). On by default; falls back to direct
- *  per-origin fetching automatically if it's unreachable. */
-const DEFAULT_SNAPSHOT_URL = 'https://jihugwak.github.io/world-monitor/feed-snapshot.json';
+/** Primary cloud snapshot — the Cloudflare Worker (cron every 2 min, collects
+ *  even when the app is closed; see worker/). On by default. The app also has a
+ *  hard-coded GitHub Pages fallback (see snapshot.ts), and finally falls back to
+ *  direct per-origin fetching if both are unreachable. */
+const DEFAULT_SNAPSHOT_URL = 'https://world-monitor-feeds.jihu-worldmon.workers.dev/feed-snapshot.json';
 
 const DEFAULT_SETTINGS: Settings = {
   proxies: DEFAULT_PROXIES.slice(),

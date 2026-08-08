@@ -22,4 +22,4 @@ crons = ["*/2 * * * *"]
 # `wrangler dev` simulates this binding and ignores the id.
 [[kv_namespaces]]
 binding = "SNAPSHOT"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+id = "24f5cca883e24bf190a8c05340d3b0ad"

@@ -1,9 +1,5 @@
+import { applyProxy, loadSettings } from './settings';
 import type { FeedItem, FeedKind, FetchedFeed } from './types';
-
-const PROXIES: Array<(url: string) => string> = [
-  (u) => `https://corsproxy.io/?${encodeURIComponent(u)}`,
-  (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
-];
 
 /** Resolve the currently-broadcast videoId for a YouTube channel.
  *  Tries /live (which redirects to the active broadcast on live channels)
@@ -25,18 +21,14 @@ export async function fetchYouTubeLiveVideoId(
   }
 
   // 2) /streams — pick the first videoId tagged `"style":"LIVE"` if any.
+  //    Only return when the LIVE marker is present; the bare-first-videoId
+  //    fallback used to leak unrelated sidebar recommendations into the embed.
   try {
     const html = await fetchText(`https://www.youtube.com/channel/${channelId}/streams`, signal);
-    // Look for runs that include both a videoId and a LIVE style marker
-    // within the same gridVideoRenderer payload (~1KB window).
     const liveMatches = html.matchAll(
       /"videoId":"([A-Za-z0-9_-]{11})"[^]{0,1500}?"style":"LIVE"/g,
     );
     for (const m of liveMatches) return m[1];
-    // No currently-live entry — return the most recent stream as a soft
-    // fallback; YouTube will play it on demand.
-    const first = html.match(/"videoId":"([A-Za-z0-9_-]{11})"/);
-    if (first) return first[1];
   } catch {
     /* return null */
   }
@@ -56,9 +48,10 @@ async function fetchText(url: string, signal?: AbortSignal): Promise<string> {
   }
 
   let lastErr: unknown;
-  for (const p of PROXIES) {
+  const proxies = loadSettings().proxies;
+  for (const p of proxies) {
     try {
-      const r = await fetch(p(url), { signal, redirect: 'follow' });
+      const r = await fetch(applyProxy(p.template, url), { signal, redirect: 'follow' });
       if (r.ok) {
         const t = await r.text();
         if (t) return t;

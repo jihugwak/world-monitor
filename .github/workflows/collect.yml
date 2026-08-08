@@ -1,0 +1,51 @@
+name: Collect feeds
+
+# Runs even when your PC is off: a free serverless cron on GitHub's runners
+# fetches every source and publishes one aggregated snapshot to GitHub Pages.
+# The desktop app reads that JSON instead of hitting 20 origins through proxies.
+
+on:
+  schedule:
+    # Every 10 minutes. GitHub's minimum is 5 min and runs may be delayed a
+    # few minutes under load — fine for "always latest".
+    - cron: '*/10 * * * *'
+  workflow_dispatch: {} # allow manual "Run workflow" from the Actions tab
+
+# Least privilege: read the repo, write to Pages.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never run two publishes at once; a newer run supersedes an in-flight one.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Collect feeds into snapshot/
+        run: node scripts/collect.mjs
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: snapshot
+
+      - id: deploy
+        uses: actions/deploy-pages@v4

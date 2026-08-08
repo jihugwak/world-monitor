@@ -1,0 +1,28 @@
+[
+  { "url": "https://www.yna.co.kr/rss/news.xml", "title": "연합뉴스", "kind": "rss" },
+  { "url": "http://www.hani.co.kr/rss/", "title": "한겨레", "kind": "rss" },
+  { "url": "https://feeds.bbci.co.uk/korean/rss.xml", "title": "BBC News 한국어", "kind": "rss" },
+
+  { "url": "https://www.youtube.com/@YTN", "feedUrl": "https://www.youtube.com/feeds/videos.xml?channel_id=UChlgI3UHCOnwUGzWzbJ3H5w", "title": "YTN", "kind": "youtube", "live": true },
+  { "url": "https://www.youtube.com/@yonhapnewstv", "feedUrl": "https://www.youtube.com/feeds/videos.xml?channel_id=UCTHCOPwqNfZ0uiKOvFyhGwg", "title": "연합뉴스TV", "kind": "youtube", "live": true },
+  { "url": "https://www.youtube.com/@SBSNEWS", "feedUrl": "https://www.youtube.com/feeds/videos.xml?channel_id=UCkinYTS9IHqOEwR1Sze2JTw", "title": "SBS 뉴스", "kind": "youtube", "live": true },
+  { "url": "https://www.youtube.com/@KBSnews", "feedUrl": "https://www.youtube.com/feeds/videos.xml?channel_id=UCcQTRi69dsVYHN3exePtZ1A", "title": "KBS News", "kind": "youtube", "live": true },
+  { "url": "https://www.youtube.com/@JTBCnews", "feedUrl": "https://www.youtube.com/feeds/videos.xml?channel_id=UCsU-I-vHLiaMfV_ceaYz5rQ", "title": "JTBC 뉴스", "kind": "youtube", "live": true },
+
+  { "url": "https://www.youtube.com/@SkyNews", "feedUrl": "https://www.youtube.com/feeds/videos.xml?channel_id=UCoMdktPbSTixAyNGwb-UYkQ", "title": "Sky News", "kind": "youtube", "live": true },
+  { "url": "https://www.youtube.com/@ABCNews", "feedUrl": "https://www.youtube.com/feeds/videos.xml?channel_id=UCBi2mrWuNuyYy4gbM6fU18Q", "title": "ABC News", "kind": "youtube", "live": true },
+  { "url": "https://www.youtube.com/@aljazeeraenglish", "feedUrl": "https://www.youtube.com/feeds/videos.xml?channel_id=UCNye-wNBqNL5ZzHSJj3l8Bg", "title": "Al Jazeera", "kind": "youtube", "live": true },
+  { "url": "https://www.youtube.com/@NHKWORLDJAPAN", "feedUrl": "https://www.youtube.com/feeds/videos.xml?channel_id=UCSPEjw8F2nQDtmUKPFNF7_A", "title": "NHK World", "kind": "youtube", "live": true },
+  { "url": "https://www.youtube.com/@FRANCE24English", "feedUrl": "https://www.youtube.com/feeds/videos.xml?channel_id=UCQfwfsi5VrQ8yKZ-UWmAEFg", "title": "France 24", "kind": "youtube", "live": true },
+  { "url": "https://www.youtube.com/@dwnews", "feedUrl": "https://www.youtube.com/feeds/videos.xml?channel_id=UCknLrEdhRCp1aegoMqRaCZg", "title": "DW News", "kind": "youtube", "live": true },
+
+  { "url": "https://feeds.feedburner.com/geeknews-feed", "title": "GeekNews", "kind": "rss" },
+  { "url": "https://news.ycombinator.com/rss", "title": "Hacker News", "kind": "rss" },
+  { "url": "https://rss.nytimes.com/services/xml/rss/nyt/World.xml", "title": "NYT World", "kind": "rss" },
+
+  { "url": "https://www.technologyreview.com/topic/artificial-intelligence/feed/", "title": "MIT Tech Review · AI", "kind": "rss" },
+  { "url": "https://venturebeat.com/category/ai/feed/", "title": "VentureBeat · AI", "kind": "rss" },
+  { "url": "https://www.wired.com/feed/tag/ai/latest/rss", "title": "WIRED · AI", "kind": "rss" },
+  { "url": "https://deepmind.google/blog/rss.xml", "title": "Google DeepMind", "kind": "rss" },
+  { "url": "https://openai.com/news/rss.xml", "title": "OpenAI", "kind": "rss" }
+]

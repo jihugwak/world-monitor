@@ -1,12 +1,15 @@
 import { AddFeedDialog } from '@/components/AddFeedDialog';
+import { ArticleReader } from '@/components/ArticleReader';
 import { FeedPanel } from '@/components/FeedPanel';
 import { FocusOverlay } from '@/components/FocusOverlay';
 import { LiveWall } from '@/components/LiveWall';
+import { SettingsDialog } from '@/components/SettingsDialog';
 import { Ticker } from '@/components/Ticker';
+import { loadSettings, onSettingsChange } from '@/settings';
 import { loadFeeds, loadTheme, makeId, saveFeeds, saveTheme } from '@/storage';
 import type { FeedKind, StoredFeed } from '@/types';
+import seedFeedsData from '@/data/seed-feeds.json';
 
-const REFRESH_INTERVAL_MS = 10 * 60_000; // 10 min
 const TICKER_VISIBLE_KEY = 'fm-ticker-visible';
 
 const SEED_URLS_KEY = 'fm-seeded-urls';
@@ -20,32 +23,9 @@ interface SeedFeed {
   feedUrl?: string;
 }
 
-const ytFeed = (channelId: string): string =>
-  `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`;
-
-const SEED_FEEDS: SeedFeed[] = [
-  // 한국 종합
-  { url: 'https://www.yna.co.kr/rss/news.xml', title: '연합뉴스', kind: 'rss' },
-  { url: 'http://www.hani.co.kr/rss/', title: '한겨레', kind: 'rss' },
-  { url: 'https://feeds.bbci.co.uk/korean/rss.xml', title: 'BBC News 한국어', kind: 'rss' },
-  // 국내 라이브 — 핸들 페이지가 종종 404를 주므로 channel_id를 직접 박음
-  { url: 'https://www.youtube.com/@YTN', feedUrl: ytFeed('UChlgI3UHCOnwUGzWzbJ3H5w'), title: 'YTN', kind: 'youtube', live: true },
-  { url: 'https://www.youtube.com/@yonhapnewstv', feedUrl: ytFeed('UCTHCOPwqNfZ0uiKOvFyhGwg'), title: '연합뉴스TV', kind: 'youtube', live: true },
-  { url: 'https://www.youtube.com/@SBSNEWS', feedUrl: ytFeed('UCkinYTS9IHqOEwR1Sze2JTw'), title: 'SBS 뉴스', kind: 'youtube', live: true },
-  { url: 'https://www.youtube.com/@KBSnews', feedUrl: ytFeed('UCcQTRi69dsVYHN3exePtZ1A'), title: 'KBS News', kind: 'youtube', live: true },
-  { url: 'https://www.youtube.com/@JTBCnews', feedUrl: ytFeed('UCsU-I-vHLiaMfV_ceaYz5rQ'), title: 'JTBC 뉴스', kind: 'youtube', live: true },
-  // 국제 라이브 (24/7 스트림 또는 자주 라이브 송출)
-  { url: 'https://www.youtube.com/@SkyNews', feedUrl: ytFeed('UCoMdktPbSTixAyNGwb-UYkQ'), title: 'Sky News', kind: 'youtube', live: true },
-  { url: 'https://www.youtube.com/@ABCNews', feedUrl: ytFeed('UCBi2mrWuNuyYy4gbM6fU18Q'), title: 'ABC News', kind: 'youtube', live: true },
-  { url: 'https://www.youtube.com/@aljazeeraenglish', feedUrl: ytFeed('UCNye-wNBqNL5ZzHSJj3l8Bg'), title: 'Al Jazeera', kind: 'youtube', live: true },
-  { url: 'https://www.youtube.com/@NHKWORLDJAPAN', feedUrl: ytFeed('UCSPEjw8F2nQDtmUKPFNF7_A'), title: 'NHK World', kind: 'youtube', live: true },
-  { url: 'https://www.youtube.com/@FRANCE24English', feedUrl: ytFeed('UCQfwfsi5VrQ8yKZ-UWmAEFg'), title: 'France 24', kind: 'youtube', live: true },
-  { url: 'https://www.youtube.com/@dwnews', feedUrl: ytFeed('UCknLrEdhRCp1aegoMqRaCZg'), title: 'DW News', kind: 'youtube', live: true },
-  // 테크 / 국제
-  { url: 'https://feeds.feedburner.com/geeknews-feed', title: 'GeekNews', kind: 'rss' },
-  { url: 'https://news.ycombinator.com/rss', title: 'Hacker News', kind: 'rss' },
-  { url: 'https://rss.nytimes.com/services/xml/rss/nyt/World.xml', title: 'NYT World', kind: 'rss' },
-];
+// Seed list lives in src/data/seed-feeds.json so the CI collector
+// (scripts/collect.mjs) and the app share exactly the same sources.
+const SEED_FEEDS: SeedFeed[] = seedFeedsData as SeedFeed[];
 
 export class App {
   private feeds: StoredFeed[] = [];
@@ -57,10 +37,14 @@ export class App {
   private clockTimer: ReturnType<typeof setInterval> | null = null;
   private theme: 'dark' | 'light' = 'dark';
   private dialog!: AddFeedDialog;
+  private settingsDialog!: SettingsDialog;
   private liveWall!: LiveWall;
   private ticker!: Ticker;
   private focus!: FocusOverlay;
+  private reader!: ArticleReader;
   private tickerVisible = true;
+  private unsubSettings: (() => void) | null = null;
+  private linkClickHandler: ((e: MouseEvent) => void) | null = null;
 
   async init(): Promise<void> {
     this.theme = loadTheme();
@@ -68,6 +52,7 @@ export class App {
     this.tickerVisible = localStorage.getItem(TICKER_VISIBLE_KEY) !== '0';
 
     this.focus = new FocusOverlay();
+    this.reader = new ArticleReader();
     this.ticker = new Ticker();
     this.liveWall = new LiveWall(this.focus, {
       onItems: (id, title, items) => {
@@ -77,6 +62,11 @@ export class App {
 
     this.buildShell();
     this.dialog = new AddFeedDialog();
+    this.settingsDialog = new SettingsDialog();
+    this.unsubSettings = onSettingsChange(() => {
+      this.startRefreshLoop();
+      this.updateStatus();
+    });
 
     this.feeds = loadFeeds();
     this.seedNewDefaults();
@@ -120,18 +110,20 @@ export class App {
         <button class="header-btn" id="btn-add">+ 피드 추가</button>
         <button class="header-btn" id="btn-ticker" title="티커 표시 전환" aria-pressed="${this.tickerVisible}">≡</button>
         <button class="header-btn" id="btn-refresh-all" title="전체 새로고침">↻</button>
+        <button class="header-btn" id="btn-settings" title="설정">⚙</button>
         <button class="header-btn" id="btn-theme" title="테마 전환">◐</button>
       </div>`;
     app.appendChild(header);
 
-    // Ticker (between header and live wall)
+    // Ticker (between header and main scroll area)
     app.appendChild(this.ticker.element);
-
-    // Live wall (always above main grid)
-    app.appendChild(this.liveWall.element);
 
     const main = document.createElement('main');
     main.className = 'main-content';
+
+    // Live wall scrolls with the page — when you scroll past it, you get the
+    // normal feed grid below.
+    main.appendChild(this.liveWall.element);
 
     this.grid = document.createElement('div');
     this.grid.className = 'panels-grid';
@@ -168,13 +160,34 @@ export class App {
 
     // Focus overlay sits at root so it covers everything
     app.appendChild(this.focus.element);
+    app.appendChild(this.reader.element);
 
     this.statusText = footer.querySelector<HTMLElement>('#status-text')!;
+
+    // Global click delegation: any feed-item / ticker / sidebar link
+    // (target="_blank") opens inside the in-app reader instead of bouncing
+    // out to the OS browser. Modifier keys keep the default behavior so
+    // power-users can still ctrl/cmd-click to open externally.
+    this.linkClickHandler = (e: MouseEvent) => {
+      if (e.defaultPrevented || e.button !== 0) return;
+      if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+      const a = (e.target as HTMLElement | null)?.closest<HTMLAnchorElement>('a[href]');
+      if (!a) return;
+      if (a.target !== '_blank') return;
+      // Don't intercept clicks inside the reader itself.
+      if (this.reader.element.contains(a)) return;
+      const href = a.href;
+      if (!href || href === '#' || href.startsWith('javascript:')) return;
+      e.preventDefault();
+      this.reader.open(href, a.textContent?.trim() ?? '');
+    };
+    document.addEventListener('click', this.linkClickHandler);
 
     document.getElementById('btn-add')!.addEventListener('click', () => void this.handleAdd());
     document.getElementById('btn-refresh-all')!.addEventListener('click', () => void this.refreshAll());
     document.getElementById('btn-theme')!.addEventListener('click', () => this.toggleTheme());
     document.getElementById('btn-ticker')!.addEventListener('click', () => this.toggleTicker());
+    document.getElementById('btn-settings')!.addEventListener('click', () => void this.settingsDialog.open());
   }
 
   /**
@@ -300,10 +313,12 @@ export class App {
   }
 
   private startRefreshLoop(): void {
+    if (this.refreshTimer) clearInterval(this.refreshTimer);
+    const intervalMs = loadSettings().refreshIntervalMin * 60_000;
     this.refreshTimer = setInterval(() => {
       if (document.hidden) return;
       void this.refreshAll();
-    }, REFRESH_INTERVAL_MS);
+    }, intervalMs);
   }
 
   private toggleTheme(): void {
@@ -335,14 +350,17 @@ export class App {
 
   private updateStatus(): void {
     document.getElementById('status-feed-count')!.textContent = `${this.feeds.length}개 피드`;
+    const min = loadSettings().refreshIntervalMin;
     this.statusText.textContent = this.feeds.length === 0
       ? '대기 중'
-      : `정상 동작 · ${REFRESH_INTERVAL_MS / 60_000}분마다 자동 새로고침 · 라이브 ${this.liveWall.getCount()}개`;
+      : `정상 동작 · ${min}분마다 자동 새로고침 · 라이브 ${this.liveWall.getCount()}개`;
   }
 
   destroy(): void {
     if (this.refreshTimer) clearInterval(this.refreshTimer);
     if (this.clockTimer) clearInterval(this.clockTimer);
+    this.unsubSettings?.();
+    if (this.linkClickHandler) document.removeEventListener('click', this.linkClickHandler);
     for (const p of this.panels.values()) p.destroy();
     this.panels.clear();
   }

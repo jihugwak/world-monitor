@@ -1,15 +1,52 @@
 {
-  "name": "feed-monitor",
+  "name": "world-monitor",
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "electron": "electron .",
+    "electron:dev": "concurrently -k -r \"vite\" \"wait-on tcp:5173 && cross-env NODE_ENV=development electron .\"",
+    "app:build": "npm run build && electron-builder",
+    "app:build:dir": "npm run build && electron-builder --dir"
+  },
+  "build": {
+    "appId": "com.jihu.worldmonitor",
+    "productName": "World Monitor",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   },
   "devDependencies": {
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
+    "electron": "^41.5.0",
+    "electron-builder": "^26.8.1",
+    "fast-xml-parser": "^5.10.1",
     "typescript": "^5.7.2",
-    "vite": "^6.0.7"
+    "vite": "^6.0.7",
+    "wait-on": "^9.0.5"
   }
 }

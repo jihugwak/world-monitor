@@ -1,4 +1,5 @@
 import { fetchAndParse, resolveFeedUrl } from '@/feeds';
+import { getSnapshotFeed } from '@/snapshot';
 import type { FeedItem, FeedStatus, StoredFeed } from '@/types';
 import { escapeAttr, escapeHtml, formatRelative } from '@/util';
 
@@ -26,7 +27,10 @@ export class FeedPanel {
   private titleEl: HTMLElement;
   private countEl: HTMLElement;
   private badgeEl: HTMLElement;
+  private actionsEl!: HTMLElement;
   private inFlight: AbortController | null = null;
+  private lastGoodItems: FeedItem[] | null = null;
+  private confirmingRemove = false;
 
   constructor(feed: StoredFeed, hooks: FeedPanelHooks) {
     this.feed = feed;
@@ -65,6 +69,9 @@ export class FeedPanel {
     const actions = document.createElement('div');
     actions.className = 'panel-actions';
 
+    const defaultActions = document.createElement('div');
+    defaultActions.className = 'panel-actions-default';
+
     const refreshBtn = document.createElement('button');
     refreshBtn.className = 'panel-action-btn';
     refreshBtn.title = '새로고침';
@@ -81,11 +88,31 @@ export class FeedPanel {
     removeBtn.className = 'panel-action-btn panel-action-danger';
     removeBtn.title = '삭제';
     removeBtn.textContent = '×';
-    removeBtn.addEventListener('click', () => {
-      if (confirm(`"${this.feed.title}" 삭제할까요?`)) this.hooks.onRemove(this.feed.id);
-    });
+    removeBtn.addEventListener('click', () => this.beginRemoveConfirm());
 
-    actions.append(refreshBtn, openBtn, removeBtn);
+    defaultActions.append(refreshBtn, openBtn, removeBtn);
+
+    const confirmActions = document.createElement('div');
+    confirmActions.className = 'panel-actions-confirm';
+
+    const confirmLabel = document.createElement('span');
+    confirmLabel.className = 'panel-confirm-label';
+    confirmLabel.textContent = '삭제할까요?';
+
+    const confirmYes = document.createElement('button');
+    confirmYes.className = 'panel-action-btn panel-action-danger';
+    confirmYes.textContent = '삭제';
+    confirmYes.addEventListener('click', () => this.hooks.onRemove(this.feed.id));
+
+    const confirmNo = document.createElement('button');
+    confirmNo.className = 'panel-action-btn';
+    confirmNo.textContent = '취소';
+    confirmNo.addEventListener('click', () => this.endRemoveConfirm());
+
+    confirmActions.append(confirmLabel, confirmYes, confirmNo);
+
+    actions.append(defaultActions, confirmActions);
+    this.actionsEl = actions;
     header.append(titleWrap, actions);
 
     this.content = document.createElement('div');
@@ -99,10 +126,23 @@ export class FeedPanel {
     return this.feed.id;
   }
 
-  setStatus(s: FeedStatus): void {
+  setStatus(s: FeedStatus, hint?: string): void {
     this.badgeEl.className = `panel-badge ${s}`;
     this.badgeEl.textContent =
       s === 'live' ? 'LIVE' : s === 'cached' ? 'CACHED' : s === 'error' ? 'ERROR' : '...';
+    if (hint) this.badgeEl.title = hint;
+    else this.badgeEl.removeAttribute('title');
+  }
+
+  private beginRemoveConfirm(): void {
+    if (this.confirmingRemove) return;
+    this.confirmingRemove = true;
+    this.actionsEl.classList.add('confirming');
+  }
+
+  private endRemoveConfirm(): void {
+    this.confirmingRemove = false;
+    this.actionsEl.classList.remove('confirming');
   }
 
   private renderSkeleton(): void {
@@ -148,11 +188,16 @@ export class FeedPanel {
         this.hooks.onUrlResolved?.(this.feed.id, r.feedUrl, this.feed.title);
         this.countEl.textContent = `(${r.items.length})`;
         this.renderItems(r.items);
+        this.lastGoodItems = r.items;
         this.hooks.onItems?.(this.feed.id, this.feed.title, r.items);
         this.setStatus('live');
         return;
       }
-      const result = await fetchAndParse(this.feed.feedUrl, ctrl.signal);
+      // Prefer the cloud snapshot (pre-parsed, no CORS proxy) when enabled;
+      // fall back to fetching the origin directly if it's off/stale/missing.
+      const snap = await getSnapshotFeed(this.feed.feedUrl, this.feed.inputUrl, ctrl.signal);
+      if (ctrl.signal.aborted) return;
+      const result = snap ?? (await fetchAndParse(this.feed.feedUrl, ctrl.signal));
       if (ctrl.signal.aborted) return;
       if (result.title && result.title !== this.feed.title) {
         this.feed.title = result.title;
@@ -160,12 +205,21 @@ export class FeedPanel {
       }
       this.countEl.textContent = `(${result.items.length})`;
       this.renderItems(result.items);
+      this.lastGoodItems = result.items;
       this.hooks.onItems?.(this.feed.id, this.feed.title, result.items);
       this.setStatus('live');
     } catch (e) {
       if (ctrl.signal.aborted) return;
-      this.setStatus('error');
-      this.renderError(e instanceof Error ? e.message : '알 수 없는 오류');
+      const msg = e instanceof Error ? e.message : '알 수 없는 오류';
+      // Fall back to last-good items if we have them — keep the panel usable
+      // through transient proxy outages.
+      if (this.lastGoodItems && this.lastGoodItems.length > 0) {
+        this.renderItems(this.lastGoodItems);
+        this.setStatus('cached', `최신 가져오기 실패 — 이전 데이터 표시 중 (${msg})`);
+      } else {
+        this.setStatus('error', msg);
+        this.renderError(msg);
+      }
     } finally {
       if (this.inFlight === ctrl) this.inFlight = null;
     }
@@ -179,6 +233,7 @@ export class FeedPanel {
     }
     this.countEl.textContent = `(${items.length})`;
     this.renderItems(items);
+    this.lastGoodItems = items;
     this.hooks.onItems?.(this.feed.id, this.feed.title, items);
     this.setStatus('live');
   }

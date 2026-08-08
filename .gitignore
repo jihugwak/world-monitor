@@ -2,3 +2,11 @@ node_modules
 dist
 .DS_Store
 *.log
+
+# Build / release artifacts
+release
+# Locally-generated feed snapshot (produced by CI, published to Pages)
+snapshot
+
+# Claude Code runtime lock
+.claude/scheduled_tasks.lock

@@ -1,18 +1,17 @@
-// World Monitor — Cloudflare Worker feed collector (on-demand, cached 60s).
+// World Monitor — Cloudflare Worker feed collector (scheduled + KV).
 //
-// GET /feed-snapshot.json → aggregated, pre-parsed snapshot of every source in
-// seed-feeds.json, served with permissive CORS. No cron / no storage: the first
-// request each minute does the work, the rest hit the 60s edge cache. Because
-// the browser (desktop or phone PWA) polls this every ~1 min, news is at most
-// ~1 min stale while the app is open — the GitHub Pages snapshot's floor was
-// ~5 min (Actions cron minimum).
+// A cron trigger (see wrangler.toml, every 2 min) runs collect() and stores the
+// aggregated snapshot in Workers KV — so news keeps being collected even when
+// the app is closed. GET /feed-snapshot.json serves the stored snapshot with
+// permissive CORS (cold-starts by collecting once if KV is still empty).
 //
 // A lightweight regex parser is used instead of a full XML DOM to stay well
 // within the Worker CPU budget across ~20 feeds per invocation.
 
 import SEEDS from '../../src/data/seed-feeds.json';
 
-const CACHE_TTL = 60; // seconds
+const KV_KEY = 'latest';
+const SERVE_TTL = 45; // seconds the served JSON may be reused downstream
 const FETCH_TIMEOUT_MS = 8000;
 const MAX_ITEMS = 40;
 const RETRIES = 2;
@@ -24,7 +23,12 @@ const CORS = {
 };
 
 export default {
-  async fetch(request, _env, ctx) {
+  // Cron: collect and persist to KV, independent of any client.
+  async scheduled(_event, env, ctx) {
+    ctx.waitUntil(refresh(env));
+  },
+
+  async fetch(request, env, ctx) {
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: CORS });
     }
@@ -37,28 +41,28 @@ export default {
       });
     }
 
-    // Edge-cache keyed by a normalized URL so every client shares one snapshot.
-    const cache = caches.default;
-    const cacheKey = new Request(`${url.origin}/feed-snapshot.json`);
-    const hit = await cache.match(cacheKey);
-    if (hit) return withCors(hit);
-
-    const snapshot = await collect();
-    const res = new Response(JSON.stringify(snapshot), {
+    // Serve the cron-collected snapshot from KV. If it's not there yet (very
+    // first request after deploy, before the first cron fired), collect once
+    // now and store it so this request isn't empty.
+    let stored = await env.SNAPSHOT.get(KV_KEY);
+    if (!stored) {
+      stored = JSON.stringify(await collect());
+      ctx.waitUntil(env.SNAPSHOT.put(KV_KEY, stored));
+    }
+    return new Response(stored, {
       headers: {
         'content-type': 'application/json; charset=utf-8',
-        'cache-control': `public, max-age=${CACHE_TTL}`,
+        'cache-control': `public, max-age=${SERVE_TTL}`,
+        ...CORS,
       },
     });
-    ctx.waitUntil(cache.put(cacheKey, res.clone()));
-    return withCors(res);
   },
 };
 
-function withCors(res) {
-  const r = new Response(res.body, res);
-  for (const [k, v] of Object.entries(CORS)) r.headers.set(k, v);
-  return r;
+async function refresh(env) {
+  const snapshot = await collect();
+  await env.SNAPSHOT.put(KV_KEY, JSON.stringify(snapshot));
+  return snapshot;
 }
 
 async function collect() {

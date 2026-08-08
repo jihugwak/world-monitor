@@ -1,11 +1,25 @@
-# Cloudflare Worker: on-demand feed collector for World Monitor.
-# Fetches every source in ../src/data/seed-feeds.json server-side (no CORS),
-# parses to the app's FeedItem shape, and serves one aggregated JSON at
+# Cloudflare Worker: scheduled feed collector for World Monitor.
+# A cron trigger collects every source in ../src/data/seed-feeds.json on a
+# schedule (independent of whether the app is open) and stores one aggregated
+# snapshot in Workers KV. The fetch handler serves it at
 #   https://<name>.<your-subdomain>.workers.dev/feed-snapshot.json
-# Responses are cached 60s (Cache API), so the app can poll every ~1 min for
-# near-real-time news without a cron or any storage. Free plan is plenty.
+# with permissive CORS.
+#
+# Free-tier note: Workers KV allows 1,000 writes/day, so the cron runs every
+# 2 minutes (720/day). True 1-minute would exceed KV's free write limit and
+# needs R2 instead.
 
 name = "world-monitor-feeds"
 main = "src/index.mjs"
 compatibility_date = "2024-11-01"
 workers_dev = true
+
+[triggers]
+crons = ["*/2 * * * *"]
+
+# KV namespace that holds the latest snapshot. The `id` is filled in after
+# `wrangler kv namespace create SNAPSHOT` (done once, post-login). Local
+# `wrangler dev` simulates this binding and ignores the id.
+[[kv_namespaces]]
+binding = "SNAPSHOT"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"

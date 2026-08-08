@@ -48,17 +48,8 @@ function toMs(dateStr) {
   return Number.isFinite(t) ? t : Date.now();
 }
 
-function pickThumbnail(node) {
-  const media = node['media:thumbnail'] ?? node['media:content'];
-  if (media) {
-    const m = arr(media)[0];
-    const url = m?.['@_url'];
-    if (url) return url;
-  }
-  const enc = arr(node.enclosure)[0];
-  if (enc?.['@_url'] && /^image\//i.test(enc['@_type'] ?? '')) return enc['@_url'];
-  return undefined;
-}
+// Note: thumbnails are intentionally NOT collected — the UI renders text-only
+// items, so shipping image URLs would just bloat the snapshot for nothing.
 
 function parseRssItems(channel) {
   return arr(channel.item).map((it, i) => {
@@ -70,7 +61,6 @@ function parseRssItems(channel) {
       pubDate: toMs(text(it.pubDate) || text(it['dc:date']) || text(it.date)),
       author: text(it['dc:creator']) || text(it.author) || undefined,
       description: text(it.description) || text(it['content:encoded']) || undefined,
-      thumbnail: pickThumbnail(it),
     };
   });
 }
@@ -88,7 +78,6 @@ function parseAtomEntries(feed) {
       pubDate: toMs(text(e.published) || text(e.updated)),
       author: text(e.author?.name) || undefined,
       description: text(e.summary) || text(e.content) || undefined,
-      thumbnail: pickThumbnail(e),
     };
   });
 }

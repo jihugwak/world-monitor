@@ -26,7 +26,7 @@ interface SnapshotDoc {
   feeds: SnapshotFeed[];
 }
 
-const TTL_MS = 60_000;
+const TTL_MS = 30_000;
 
 let cache: { url: string; at: number; doc: SnapshotDoc } | null = null;
 let inflight: { url: string; promise: Promise<SnapshotDoc | null> } | null = null;

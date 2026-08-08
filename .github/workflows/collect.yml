@@ -11,9 +11,10 @@ on:
   push:
     branches: [main]
   schedule:
-    # Every 10 minutes. GitHub's minimum is 5 min; runs may be delayed a few
-    # minutes under load — fine for "always latest".
-    - cron: '*/10 * * * *'
+    # Every 5 minutes — the fastest GitHub Actions cron allows (runs may still
+    # be delayed a few minutes under load). This is the real freshness floor;
+    # polling the app faster than this just re-reads the same snapshot.
+    - cron: '*/5 * * * *'
   workflow_dispatch: {}
 
 permissions:

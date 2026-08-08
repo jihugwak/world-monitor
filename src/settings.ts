@@ -27,7 +27,7 @@ export const DEFAULT_PROXIES: ProxyEntry[] = [
   { template: 'https://api.allorigins.win/raw?url={urlEnc}' },
 ];
 
-export const DEFAULT_REFRESH_MIN = 10;
+export const DEFAULT_REFRESH_MIN = 1;
 const MIN_REFRESH_MIN = 1;
 const MAX_REFRESH_MIN = 240;
 

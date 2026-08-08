@@ -90,7 +90,9 @@
       "Bash(echo \"=== exit: $? ===\")",
       "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\).on\\('end',\\(\\)=>{const s=JSON.parse\\(d\\);console.log\\('okCount:',s.okCount,'/',s.total\\);console.log\\('generatedAt:',new Date\\(s.generatedAt\\).toISOString\\(\\)\\);const ai=s.feeds.filter\\(f=>/AI|OpenAI|DeepMind/.test\\(f.title\\)\\).map\\(f=>f.title+':'+f.items.length\\);console.log\\('AI feeds:',ai.join\\(' | '\\)\\);}\\)\")",
       "Bash(git commit -q -m)",
-      "Bash(node -e \"const b=require\\('fs'\\).readFileSync\\('image.png'\\);console.log\\('size',b.length\\);console.log\\('dims', b.readUInt32BE\\(16\\)+'x'+b.readUInt32BE\\(20\\)\\)\")"
+      "Bash(node -e \"const b=require\\('fs'\\).readFileSync\\('image.png'\\);console.log\\('size',b.length\\);console.log\\('dims', b.readUInt32BE\\(16\\)+'x'+b.readUInt32BE\\(20\\)\\)\")",
+      "Bash(node -e \"const s=require\\('./snapshot/feed-snapshot.json'\\);const hasThumb=s.feeds.some\\(f=>f.items.some\\(i=>'thumbnail' in i\\)\\);console.log\\('any thumbnail field?', hasThumb, '| bytes', require\\('fs'\\).statSync\\('./snapshot/feed-snapshot.json'\\).size\\)\")",
+      "Bash(VITE_TARGET=web npm run build)"
     ]
   }
 }

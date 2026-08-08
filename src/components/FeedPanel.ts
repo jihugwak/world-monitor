@@ -166,7 +166,7 @@ export class FeedPanel {
       return;
     }
     const sorted = [...items].sort((a, b) => b.pubDate - a.pubDate).slice(0, ITEMS_PER_PANEL);
-    const html = sorted.map((it) => renderItem(it, this.feed.kind)).join('');
+    const html = sorted.map((it) => renderItem(it)).join('');
     this.content.innerHTML = `<ul class="feed-items">${html}</ul>`;
   }
 
@@ -244,17 +244,13 @@ export class FeedPanel {
   }
 }
 
-function renderItem(item: FeedItem, kind: string): string {
+function renderItem(item: FeedItem): string {
   const time = formatRelative(item.pubDate);
   const author = item.author ? `<span class="item-author">${escapeHtml(item.author)}</span>` : '';
-  const thumb = item.thumbnail
-    ? `<img class="item-thumb" loading="lazy" src="${escapeAttr(item.thumbnail)}" alt="" />`
-    : '';
+  // Text-only: thumbnails are deliberately not rendered (faster, less data).
   const link = item.link ? escapeAttr(item.link) : '#';
-  const isYouTube = kind === 'youtube';
   return `
-    <li class="feed-item${isYouTube ? ' has-thumb' : ''}">
-      ${thumb}
+    <li class="feed-item">
       <div class="item-body">
         <a class="item-title" href="${link}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.title)}</a>
         <div class="item-meta">

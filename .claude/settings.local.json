@@ -107,7 +107,8 @@
       "Bash(npx --yes wrangler@3 deploy)",
       "Bash(node *)",
       "Bash(nslookup world-monitor-feeds.jihu-worldmon.workers.dev)",
-      "Bash(nslookup jihu-worldmon.workers.dev)"
+      "Bash(nslookup jihu-worldmon.workers.dev)",
+      "Bash(npx --yes wrangler@3 dev --local --test-scheduled --port 8790)"
     ]
   }
 }

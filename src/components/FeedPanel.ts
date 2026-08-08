@@ -3,7 +3,10 @@ import { getSnapshotFeed } from '@/snapshot';
 import type { FeedItem, FeedStatus, StoredFeed } from '@/types';
 import { escapeAttr, escapeHtml, formatRelative } from '@/util';
 
-const ITEMS_PER_PANEL = 20;
+// The cloud snapshot accumulates a full day of items (per feed) — show them all
+// so the panel can be scrolled through, newest-first. Capped to match the
+// Worker's per-feed daily cap.
+const ITEMS_PER_PANEL = 150;
 
 export interface FeedPanelHooks {
   onRemove: (id: string) => void;

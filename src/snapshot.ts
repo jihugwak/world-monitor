@@ -81,6 +81,35 @@ async function loadSnapshot(signal?: AbortSignal): Promise<SnapshotDoc | null> {
   return inflight;
 }
 
+/** Origin of the primary snapshot source (the Cloudflare Worker), used for its
+ *  sibling endpoints like /live. Empty if no usable snapshot URL is set. */
+function snapshotOrigin(): string {
+  try {
+    return new URL(loadSettings().snapshotUrl).origin;
+  } catch {
+    return '';
+  }
+}
+
+/** Resolve a YouTube channel's currently-live videoId via the Worker's /live
+ *  endpoint (server-side, no CORS — works on mobile where a client-side scrape
+ *  is blocked). Returns null on any failure so the caller can fall back. */
+export async function resolveLiveVideoId(
+  channelId: string,
+  signal?: AbortSignal,
+): Promise<string | null> {
+  const origin = snapshotOrigin();
+  if (!origin) return null;
+  try {
+    const r = await fetch(`${origin}/live?channel=${channelId}`, { signal });
+    if (!r.ok) return null;
+    const j = (await r.json()) as { videoId?: string | null };
+    return typeof j.videoId === 'string' && j.videoId ? j.videoId : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Return pre-parsed items for a feed from the snapshot, or null to signal the
  *  caller should fetch the origin directly (snapshot off, stale, or missing). */
 export async function getSnapshotFeed(

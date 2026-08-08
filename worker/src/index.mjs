@@ -1,20 +1,26 @@
-// World Monitor — Cloudflare Worker feed collector (scheduled + KV).
+// World Monitor — Cloudflare Worker feed collector.
 //
-// A cron trigger (see wrangler.toml, every 2 min) runs collect() and stores the
-// aggregated snapshot in Workers KV — so news keeps being collected even when
-// the app is closed. GET /feed-snapshot.json serves the stored snapshot with
-// permissive CORS (cold-starts by collecting once if KV is still empty).
+// Endpoints:
+//   GET /feed-snapshot.json → the CURRENT day's accumulated feed items (KST),
+//        newest-first, deduped. Items pile up from 00:00 KST and reset at the
+//        next 00:00 (previous day's KV entry auto-expires). Served with CORS.
+//   GET /live?channel=UC… → resolves a channel's currently-live videoId
+//        server-side (no CORS), so mobile browsers can show live tiles that a
+//        client-side scrape can't reach.
 //
-// A lightweight regex parser is used instead of a full XML DOM to stay well
-// within the Worker CPU budget across ~20 feeds per invocation.
+// A cron (see wrangler.toml, every 2 min) accumulates into Workers KV even when
+// the app is closed. A lightweight regex parser keeps CPU within budget.
 
 import SEEDS from '../../src/data/seed-feeds.json';
 
-const KV_KEY = 'latest';
-const SERVE_TTL = 45; // seconds the served JSON may be reused downstream
+const SERVE_TTL = 30; // seconds downstream may reuse the snapshot
+const LIVE_TTL = 60; // seconds to cache a /live lookup
 const FETCH_TIMEOUT_MS = 8000;
-const MAX_ITEMS = 40;
+const MAX_ITEMS_PER_FETCH = 40; // per feed, per collection pass
+const MAX_ITEMS_PER_DAY = 150; // per feed, accumulated over the day
+const DAY_TTL_SECONDS = 60 * 60 * 26; // KV entry lives ~26h → auto-wipes next day
 const RETRIES = 2;
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
 
 const CORS = {
   'access-control-allow-origin': '*',
@@ -23,9 +29,9 @@ const CORS = {
 };
 
 export default {
-  // Cron: collect and persist to KV, independent of any client.
+  // Cron: accumulate into the current KST day's bucket, independent of clients.
   async scheduled(_event, env, ctx) {
-    ctx.waitUntil(refresh(env));
+    ctx.waitUntil(accumulate(env));
   },
 
   async fetch(request, env, ctx) {
@@ -33,64 +39,150 @@ export default {
       return new Response(null, { status: 204, headers: CORS });
     }
     const url = new URL(request.url);
-    if (!url.pathname.endsWith('/feed-snapshot.json')) {
-      const body = 'World Monitor feed collector — GET /feed-snapshot.json';
-      return new Response(body, {
-        status: url.pathname === '/' ? 200 : 404,
-        headers: { 'content-type': 'text/plain; charset=utf-8', ...CORS },
+
+    if (url.pathname.endsWith('/live')) {
+      return handleLive(url);
+    }
+
+    if (url.pathname.endsWith('/feed-snapshot.json')) {
+      let stored = await env.SNAPSHOT.get(dayKey());
+      if (!stored) {
+        // First request of a fresh day (before the first cron fired): seed it.
+        stored = JSON.stringify(await accumulate(env));
+      }
+      return new Response(stored, {
+        headers: {
+          'content-type': 'application/json; charset=utf-8',
+          'cache-control': `public, max-age=${SERVE_TTL}`,
+          ...CORS,
+        },
       });
     }
 
-    // Serve the cron-collected snapshot from KV. If it's not there yet (very
-    // first request after deploy, before the first cron fired), collect once
-    // now and store it so this request isn't empty.
-    let stored = await env.SNAPSHOT.get(KV_KEY);
-    if (!stored) {
-      stored = JSON.stringify(await collect());
-      ctx.waitUntil(env.SNAPSHOT.put(KV_KEY, stored));
-    }
-    return new Response(stored, {
-      headers: {
-        'content-type': 'application/json; charset=utf-8',
-        'cache-control': `public, max-age=${SERVE_TTL}`,
-        ...CORS,
-      },
+    const body = 'World Monitor feed collector — GET /feed-snapshot.json';
+    return new Response(body, {
+      status: url.pathname === '/' ? 200 : 404,
+      headers: { 'content-type': 'text/plain; charset=utf-8', ...CORS },
     });
   },
 };
 
-async function refresh(env) {
-  const snapshot = await collect();
-  await env.SNAPSHOT.put(KV_KEY, JSON.stringify(snapshot));
-  return snapshot;
+// ── Daily accumulation ─────────────────────────────────────
+
+function kstDate(ts = Date.now()) {
+  return new Date(ts + KST_OFFSET_MS).toISOString().slice(0, 10); // YYYY-MM-DD
+}
+function dayKey(ts = Date.now()) {
+  return `day:${kstDate(ts)}`;
+}
+
+async function accumulate(env) {
+  const key = dayKey();
+  const prev = await env.SNAPSHOT.get(key, 'json');
+  const fresh = await collect();
+  const merged = mergeDay(prev, fresh);
+  await env.SNAPSHOT.put(key, JSON.stringify(merged), { expirationTtl: DAY_TTL_SECONDS });
+  return merged;
+}
+
+function mergeDay(prev, fresh) {
+  const prevByUrl = new Map((prev?.feeds ?? []).map((f) => [f.feedUrl, f]));
+  const feeds = fresh.feeds.map((ff) => {
+    const pf = prevByUrl.get(ff.feedUrl);
+    const prevItems = pf?.items ?? [];
+    // If this pass failed, keep whatever we already had for the day.
+    const freshItems = ff.ok ? ff.items : [];
+    const byId = new Map();
+    for (const it of prevItems) byId.set(it.id, it);
+    for (const it of freshItems) byId.set(it.id, it); // fresh wins on dupes
+    const items = [...byId.values()]
+      .sort((a, b) => b.pubDate - a.pubDate)
+      .slice(0, MAX_ITEMS_PER_DAY);
+    return {
+      inputUrl: ff.inputUrl,
+      feedUrl: ff.feedUrl,
+      title: ff.title || pf?.title || '',
+      kind: ff.kind,
+      live: ff.live,
+      ok: ff.ok || prevItems.length > 0,
+      items,
+    };
+  });
+  return {
+    generatedAt: Date.now(),
+    day: kstDate(),
+    okCount: feeds.filter((f) => f.ok).length,
+    total: feeds.length,
+    feeds,
+  };
 }
 
 async function collect() {
   const feeds = await Promise.all(SEEDS.map(collectOne));
-  const okCount = feeds.filter((f) => f.ok).length;
-  return { generatedAt: Date.now(), okCount, total: feeds.length, feeds };
+  return { feeds };
 }
 
 async function collectOne(seed) {
   const feedUrl = seed.feedUrl ?? seed.url;
-  const base = {
-    inputUrl: seed.url,
-    feedUrl,
-    title: seed.title,
-    kind: seed.kind,
-    live: seed.live,
-  };
+  const base = { inputUrl: seed.url, feedUrl, title: seed.title, kind: seed.kind, live: seed.live };
   try {
     const xml = await fetchText(feedUrl);
     const parsed = parseXml(xml);
     const items = parsed.items
       .filter((it) => it.link || it.title)
       .sort((a, b) => b.pubDate - a.pubDate)
-      .slice(0, MAX_ITEMS);
+      .slice(0, MAX_ITEMS_PER_FETCH);
     return { ...base, title: parsed.title || seed.title, ok: true, items };
   } catch (e) {
     return { ...base, ok: false, error: String(e && e.message ? e.message : e), items: [] };
   }
+}
+
+// ── Live videoId resolution (server-side, no CORS) ─────────
+
+async function handleLive(url) {
+  const cid = url.searchParams.get('channel') || '';
+  if (!/^UC[\w-]{22}$/.test(cid)) {
+    return json({ videoId: null, error: 'bad channel' }, 400);
+  }
+  const cache = caches.default;
+  const cacheKey = new Request(`${url.origin}/live?channel=${cid}`);
+  const hit = await cache.match(cacheKey);
+  if (hit) return hit;
+
+  const videoId = await liveVideoId(cid);
+  const res = json({ videoId }, 200, `public, max-age=${LIVE_TTL}`);
+  // Only cache positive-or-negative briefly; both are fine to reuse for 60s.
+  await cache.put(cacheKey, res.clone());
+  return res;
+}
+
+async function liveVideoId(cid) {
+  try {
+    const html = await fetchText(`https://www.youtube.com/channel/${cid}/live`);
+    const m = html.match(
+      /<link rel="canonical" href="https:\/\/www\.youtube\.com\/watch\?v=([A-Za-z0-9_-]{11})"/,
+    );
+    if (m) return m[1];
+  } catch {
+    /* fall through */
+  }
+  try {
+    const html = await fetchText(`https://www.youtube.com/channel/${cid}/streams`);
+    const m = html.match(/"videoId":"([A-Za-z0-9_-]{11})"[^]{0,1500}?"style":"LIVE"/);
+    if (m) return m[1];
+  } catch {
+    /* none */
+  }
+  return null;
+}
+
+// ── HTTP + XML helpers ─────────────────────────────────────
+
+function json(obj, status = 200, cacheControl) {
+  const headers = { 'content-type': 'application/json; charset=utf-8', ...CORS };
+  if (cacheControl) headers['cache-control'] = cacheControl;
+  return new Response(JSON.stringify(obj), { status, headers });
 }
 
 async function fetchText(url) {
@@ -117,8 +209,6 @@ async function fetchText(url) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// ── Lightweight XML parsing (regex-based) ──────────────────
-
 function parseXml(xml) {
   const isAtom = /<feed[\s>]/i.test(xml.slice(0, 2000)) || /<entry[\s>]/i.test(xml);
   const title = decode(stripCdata(firstTag(xml, 'title'))) || 'Untitled';
@@ -127,6 +217,8 @@ function parseXml(xml) {
   return { title, items };
 }
 
+// Items are intentionally text-only (no description / thumbnail) — the UI shows
+// title + time, so extra fields would just bloat the accumulated day.
 function rssItem(b, i) {
   const link = decode(stripCdata(firstTag(b, 'link'))) || '';
   return {
@@ -135,12 +227,10 @@ function rssItem(b, i) {
     link,
     pubDate: toMs(firstTag(b, 'pubDate') || firstTag(b, 'dc:date') || firstTag(b, 'date')),
     author: decode(stripCdata(firstTag(b, 'dc:creator') || firstTag(b, 'author'))) || undefined,
-    description: decode(stripCdata(firstTag(b, 'description') || firstTag(b, 'content:encoded'))) || undefined,
   };
 }
 
 function atomItem(b, i) {
-  // <link href="..." rel="alternate"/> — prefer alternate, else first href.
   let link = '';
   const links = [...b.matchAll(/<link\b[^>]*>/gi)].map((m) => m[0]);
   const alt = links.find((l) => /rel=["']?alternate/i.test(l)) ?? links[0] ?? '';
@@ -152,11 +242,9 @@ function atomItem(b, i) {
     link,
     pubDate: toMs(firstTag(b, 'published') || firstTag(b, 'updated')),
     author: decode(stripCdata(innerTag(firstBlock(b, 'author') || '', 'name'))) || undefined,
-    description: decode(stripCdata(firstTag(b, 'summary') || firstTag(b, 'content'))) || undefined,
   };
 }
 
-// Return the inner text of the first <tag>…</tag> in s (namespace-aware).
 function firstTag(s, tag) {
   const re = new RegExp(`<${escapeRe(tag)}\\b[^>]*>([\\s\\S]*?)<\\/${escapeRe(tag)}>`, 'i');
   const m = s.match(re);
@@ -164,14 +252,12 @@ function firstTag(s, tag) {
 }
 const innerTag = firstTag;
 
-// First whole <tag>…</tag> block (element + contents).
 function firstBlock(s, tag) {
   const re = new RegExp(`<${escapeRe(tag)}\\b[^>]*>[\\s\\S]*?<\\/${escapeRe(tag)}>`, 'i');
   const m = s.match(re);
   return m ? m[0] : '';
 }
 
-// All <tag>…</tag> blocks.
 function matchAll(s, tag) {
   const re = new RegExp(`<${escapeRe(tag)}\\b[^>]*>[\\s\\S]*?<\\/${escapeRe(tag)}>`, 'gi');
   return [...s.matchAll(re)].map((m) => m[0]);

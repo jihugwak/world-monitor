@@ -1,4 +1,5 @@
 import { fetchAndParse, fetchYouTubeLiveVideoId } from '@/feeds';
+import { resolveLiveVideoId } from '@/snapshot';
 import type { FeedItem, StoredFeed } from '@/types';
 import { escapeHtml, extractYouTubeChannelId } from '@/util';
 import { FocusOverlay } from './FocusOverlay';
@@ -298,7 +299,12 @@ class LiveTile {
     const wasLive = this.hasLive;
     try {
       const [vidResult, parsedResult] = await Promise.allSettled([
-        fetchYouTubeLiveVideoId(cid, ctrl.signal),
+        // Resolve the live videoId via the Worker first (server-side, works on
+        // mobile where a client-side YouTube scrape is CORS-blocked); fall back
+        // to the direct scrape (Electron desktop / when no Worker configured).
+        (async () =>
+          (await resolveLiveVideoId(cid, ctrl.signal)) ??
+          (await fetchYouTubeLiveVideoId(cid, ctrl.signal)))(),
         fetchAndParse(this.feed.feedUrl, ctrl.signal),
       ]);
       if (ctrl.signal.aborted) return;

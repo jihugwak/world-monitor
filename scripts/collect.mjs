@@ -112,7 +112,12 @@ function parseXml(xml) {
   throw new Error('알 수 없는 피드 포맷');
 }
 
-async function fetchText(url) {
+const RETRIES = 4; // total attempts per feed
+const RETRY_BASE_MS = 1000; // backoff: 1s, 2s, 3s between tries (~6s worst case)
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function fetchOnce(url) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
   try {
@@ -130,6 +135,21 @@ async function fetchText(url) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+// YouTube's videos.xml (and some origins) intermittently return 404/500/429;
+// a single miss shouldn't drop the feed. Retry a few times with backoff.
+async function fetchText(url) {
+  let lastErr;
+  for (let attempt = 1; attempt <= RETRIES; attempt++) {
+    try {
+      return await fetchOnce(url);
+    } catch (e) {
+      lastErr = e;
+      if (attempt < RETRIES) await sleep(RETRY_BASE_MS * attempt);
+    }
+  }
+  throw lastErr;
 }
 
 async function collectOne(seed) {
